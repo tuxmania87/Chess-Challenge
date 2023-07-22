@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
+using static MyBot;
 
 public class MyBot : IChessBot
 {
@@ -84,14 +85,103 @@ public class MyBot : IChessBot
     }
 
 
-    public int AlphaBeta(Board board, int alpha, int beta, int depth, int maxdepth, PVNode pline)
+    public class HashEntry
     {
+        public ulong key { get; set; }
+        public Move move { get; set; }
+        public int score { get; set; }
+        public enum FLAG { ALPHA, BETA, EXACT, NONE }
+        public FLAG flag { get; set; }
+        public int depth { get; set; }
+        public int md { get; set; }
+    }
+
+
+    public static uint hashtableSize = 2000000;
+    //public static Dictionary<ulong, HashEntry> globalHashDict = new Dictionary<ulong, HashEntry>();
+    public static HashEntry[] globalHashDict = new HashEntry[hashtableSize];
+
+    public void StoreHashEntry(ulong key, Move move, int score, HashEntry.FLAG flag, int depth, int md)
+    {
+
+        HashEntry _e = new HashEntry();
+        _e.key = key;
+        _e.move = move;
+        _e.score = score;
+        _e.flag = flag;
+        _e.depth = depth;
+        _e.md = md;
+
+        ulong index = key % hashtableSize;
+        globalHashDict[index] = _e;
+
+    }
+
+    public HashEntry GetHashEntry(ulong key)
+    {
+        ulong index = key % hashtableSize;
+        if (globalHashDict[index] != null && globalHashDict[index].key == key)
+
+        {
+            return globalHashDict[index];
+        }
+        return null;
+    }
+
+    public List<Move> get_pv_line_(Board board)
+    {
+        List<Move> ret = new List<Move>();
+
+        Board _p = Board.CreateBoardFromFEN(board.GetFenString());
+
+        while (true)
+        {
+            ulong kk = _p.ZobristKey;
+            HashEntry _entry = GetHashEntry(kk);
+            if (_entry == null || _p.IsDraw())
+            {
+                break;
+            }
+            ret.Add(_entry.move);
+            _p.MakeMove(_entry.move);
+        }
+        return ret;
+
+    }
+
+    public int AlphaBeta(Board board, int alpha, int beta, int depth, int maxdepth)
+    {
+
+        int oldalpha = alpha;
+
+        ulong kk = board.ZobristKey;
+        HashEntry hashe = GetHashEntry(kk);
+
+        if (hashe != null)
+        {
+            if(hashe.depth >= depth)
+            {
+                if (hashe.flag == HashEntry.FLAG.ALPHA && hashe.score <= alpha)
+                {
+                    return alpha;
+                }
+                if (hashe.flag == HashEntry.FLAG.BETA && hashe.score >= beta)
+                {
+                    return beta;
+                }
+                if (hashe.flag == HashEntry.FLAG.EXACT)
+                {
+                    return hashe.score;
+                }
+            }
+        }
+
+
 
         PVNode line = new PVNode();
 
         if(depth == 0)
         {
-            pline.cmove = 0;
             return evaluatePosition(board);
             //return Quiesce(board, alpha, beta);
         }
@@ -120,24 +210,44 @@ public class MyBot : IChessBot
             depth++;
         }
 
+        int best_score = -INF;
+        Move best_move = Move.NullMove;
+
         foreach (Move m in allLegalMoves)
         {
             board.MakeMove(m);
             //string tempfen = board.GetFenString();
-            int score = -1 * AlphaBeta(board, -beta, -alpha, depth - 1, maxdepth, line);
+            int score = -1 * AlphaBeta(board, -beta, -alpha, depth - 1, maxdepth);
             board.UndoMove(m);
 
-            if (score >= beta)
-                return beta;
-            if (score > alpha)
+            if (score > best_score)
             {
-                alpha = score;
-                List<Move> _mm = new List<Move>();
-                _mm.Add(m);
-                _mm.AddRange(line.argmove);
-                pline.argmove = _mm;
-                pline.cmove =  line.cmove;
+                best_score = score;
+                best_move = m;
+
+                if (score > alpha)
+                {
+                    if (score >= beta)
+                    {
+                        
+                        StoreHashEntry(board.ZobristKey, best_move, beta, HashEntry.FLAG.BETA, depth, maxdepth);
+                        return beta;
+                    }
+
+                    alpha = score;
+                }
             }
+
+        }
+
+
+        if (oldalpha != alpha)
+        {
+            StoreHashEntry(kk, best_move, best_score, HashEntry.FLAG.EXACT, depth, maxdepth);
+        }
+        else
+        {
+            StoreHashEntry(kk, best_move, alpha, HashEntry.FLAG.ALPHA, depth, maxdepth);
         }
 
         return alpha;
@@ -155,8 +265,19 @@ public class MyBot : IChessBot
         return s;
     }
 
+    public void iterative_deepening(Board board, int maxdepth)
+    {
+        for(int i= 0; i < maxdepth;i++)
+        {
+            int score = AlphaBeta(board, -INF, INF, i, i);
+            Console.WriteLine(string.Format("Level {0} Score {1}", i, score));
+        }
+    }
+
     public Move Think(Board board, Timer timer)
     {
+
+
         foreach (var attacker in Mvv_Lva_Victim_scores.Keys)
         {
             Mvv_Lva_Scores[attacker] = new Dictionary<PieceType, int>();
@@ -166,21 +287,20 @@ public class MyBot : IChessBot
             }
         }
 
-        PVNode pVNode = new PVNode();
-        int score = AlphaBeta(board, -INF, INF, 4, 4, pVNode);
+        //int score = AlphaBeta(board, -INF, INF, 4, 4);
+        //Console.WriteLine("Score: {0}", score);
+        iterative_deepening(board, 7);
 
-        Console.WriteLine("Score: {0}", score);
 
-        if(pVNode.argmove.Count == 0)
+
+        /*if(pVNode.argmove.Count == 0)
         {
             Random r = new Random();
             Move[] legal = board.GetLegalMoves();
-
             return legal[r.NextInt64(legal.Length)];
+        }*/
 
-
-        }
-
-        return pVNode.argmove[0];
+        //return pVNode.argmove[0];
+        return get_pv_line_(board)[0];
     }
 }
