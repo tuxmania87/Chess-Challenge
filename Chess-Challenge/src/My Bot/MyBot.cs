@@ -1,26 +1,24 @@
 ﻿using ChessChallenge.API;
-using Microsoft.CodeAnalysis.Operations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.WebSockets;
-using System.Runtime.InteropServices;
-using static MyBot;
+
 
 public class MyBot : IChessBot
 {
+
     static int INF = 12000000;
     static Dictionary<PieceType, Dictionary<PieceType, int>> Mvv_Lva_Scores
         = new Dictionary<PieceType, Dictionary<PieceType, int>>();
 
     public Dictionary<PieceType, int> evalScores = new Dictionary<PieceType, int>()
     {
-        { PieceType.Pawn, 100 }, 
-        { PieceType.Knight, 300 }, 
-        { PieceType.Bishop, 305}, 
-        { PieceType.Rook, 500} , 
+        { PieceType.Pawn, 100 },
+        { PieceType.Knight, 300 },
+        { PieceType.Bishop, 305},
+        { PieceType.Rook, 500} ,
         { PieceType.King, 9000 },
-        { PieceType.Queen, 900 },       
+        { PieceType.Queen, 900 },
         { PieceType.None, 0 }
     };
 
@@ -44,8 +42,24 @@ public class MyBot : IChessBot
             Piece p = board.GetPiece(s);
 
             score += evalScores[p.PieceType] * (p.IsWhite ? 1 : -1);
+
+            if (p.PieceType == PieceType.Knight || p.PieceType == PieceType.Bishop)
+            {
+                if ((p.IsWhite && s.Rank == 0) || (!p.IsWhite && s.Rank == 7))
+                    score -= 20 * (p.IsWhite ? 1 : -1);
+            }
+            else if (p.PieceType == PieceType.Rook && (s.File <= 1 || s.File >= 6))
+                score -= 20 * (p.IsWhite ? 1 : -1);
+            else if (p.PieceType == PieceType.Pawn)
+            {
+                if (s.Rank == 1 && p.IsWhite && s.File >= 2 && s.File <= 5)
+                    score -= 20 * (p.IsWhite ? 1 : -1);
+                if (s.Rank == 6 && !p.IsWhite && s.File >= 2 && s.File <= 5)
+                    score -= 20 * (p.IsWhite ? 1 : -1);
+            }
+
         }
-        
+
         return score * (board.IsWhiteToMove ? 1 : -1);
     }
 
@@ -56,142 +70,23 @@ public class MyBot : IChessBot
         public List<Move> argmove = new List<Move>();
     }
 
-    public int Quiesce(Board board, int alpha, int beta)
+    public int AlphaBeta(Board board, int alpha, int beta, int depth, int maxdepth, PVNode pline, bool nullMove)
     {
-       
-
-        int ev = evaluatePosition(board);
-        if(ev >= beta)
-        {
-            return beta;
-        }
-        if (alpha < ev)
-        {
-            alpha = ev;
-        }
-
-        foreach(Move m in board.GetLegalMoves(true))
-        {
-            board.MakeMove(m);
-            int score = -1 * Quiesce(board, -beta, -alpha);
-            board.UndoMove(m);
-
-            if (score >= beta)
-                return beta;
-            if (score > alpha)
-                alpha = score;
-        }
-        return alpha;
-    }
-
-
-    public class HashEntry
-    {
-        public ulong key { get; set; }
-        public Move move { get; set; }
-        public int score { get; set; }
-        public enum FLAG { ALPHA, BETA, EXACT, NONE }
-        public FLAG flag { get; set; }
-        public int depth { get; set; }
-        public int md { get; set; }
-    }
-
-
-    public static uint hashtableSize = 2000000;
-    //public static Dictionary<ulong, HashEntry> globalHashDict = new Dictionary<ulong, HashEntry>();
-    public static HashEntry[] globalHashDict = new HashEntry[hashtableSize];
-
-    public void StoreHashEntry(ulong key, Move move, int score, HashEntry.FLAG flag, int depth, int md)
-    {
-
-        HashEntry _e = new HashEntry();
-        _e.key = key;
-        _e.move = move;
-        _e.score = score;
-        _e.flag = flag;
-        _e.depth = depth;
-        _e.md = md;
-
-        ulong index = key % hashtableSize;
-        globalHashDict[index] = _e;
-
-    }
-
-    public HashEntry GetHashEntry(ulong key)
-    {
-        ulong index = key % hashtableSize;
-        if (globalHashDict[index] != null && globalHashDict[index].key == key)
-
-        {
-            return globalHashDict[index];
-        }
-        return null;
-    }
-
-    public List<Move> get_pv_line_(Board board)
-    {
-        List<Move> ret = new List<Move>();
-
-        Board _p = Board.CreateBoardFromFEN(board.GetFenString());
-
-        while (true)
-        {
-            ulong kk = _p.ZobristKey;
-            HashEntry _entry = GetHashEntry(kk);
-            if (_entry == null || _p.IsDraw())
-            {
-                break;
-            }
-            ret.Add(_entry.move);
-            _p.MakeMove(_entry.move);
-        }
-        return ret;
-
-    }
-
-    public int AlphaBeta(Board board, int alpha, int beta, int depth, int maxdepth)
-    {
-
-        int oldalpha = alpha;
-
-        ulong kk = board.ZobristKey;
-        HashEntry hashe = GetHashEntry(kk);
-
-        if (hashe != null)
-        {
-            if(hashe.depth >= depth)
-            {
-                if (hashe.flag == HashEntry.FLAG.ALPHA && hashe.score <= alpha)
-                {
-                    return alpha;
-                }
-                if (hashe.flag == HashEntry.FLAG.BETA && hashe.score >= beta)
-                {
-                    return beta;
-                }
-                if (hashe.flag == HashEntry.FLAG.EXACT)
-                {
-                    return hashe.score;
-                }
-            }
-        }
-
-
 
         PVNode line = new PVNode();
 
-        if(depth == 0)
+        if (depth == 0)
         {
+            pline.cmove = 0;
             return evaluatePosition(board);
-            //return Quiesce(board, alpha, beta);
+            //return Quiesce(board, alpha, beta, board.PlyCount);
         }
 
         Move[] allLegalMoves = board.GetLegalMoves();
 
-
-        if(allLegalMoves.Length == 0)
+        if (allLegalMoves.Length == 0)
         {
-            if(board.IsInCheck())
+            if (board.IsInCheck())
             {
                 return -1 * (100000 + depth);
             }
@@ -200,54 +95,53 @@ public class MyBot : IChessBot
                 return 0;
             }
         }
-        if(board.IsDraw())
+        if (board.IsDraw())
         {
             return 0;
         }
 
-        if(board.IsInCheck())
+        if (board.IsInCheck())
         {
             depth++;
         }
 
-        int best_score = -INF;
-        Move best_move = Move.NullMove;
-
+        Dictionary<Move, int> scoredMoves = new Dictionary<Move, int>();
         foreach (Move m in allLegalMoves)
+        {
+            if (m.IsCapture)
+            {
+                PieceType attacker = board.GetPiece(m.StartSquare).PieceType;
+                PieceType victim = board.GetPiece(m.TargetSquare).PieceType;
+
+                if (victim == PieceType.None)
+                    victim = PieceType.Pawn;
+                scoredMoves[m] = Mvv_Lva_Scores[attacker][victim];
+            }
+            else
+                scoredMoves[m] = 2;
+        }
+
+        List<Move> scoredList = scoredMoves.OrderBy(x => x.Value).Select(y => y.Key).ToList();
+        scoredList.Reverse();
+
+        foreach (Move m in scoredList)
         {
             board.MakeMove(m);
             //string tempfen = board.GetFenString();
-            int score = -1 * AlphaBeta(board, -beta, -alpha, depth - 1, maxdepth);
+            int score = -1 * AlphaBeta(board, -beta, -alpha, depth - 1, maxdepth, line, nullMove);
             board.UndoMove(m);
 
-            if (score > best_score)
+            if (score >= beta)
+                return beta;
+            if (score > alpha)
             {
-                best_score = score;
-                best_move = m;
-
-                if (score > alpha)
-                {
-                    if (score >= beta)
-                    {
-                        
-                        StoreHashEntry(board.ZobristKey, best_move, beta, HashEntry.FLAG.BETA, depth, maxdepth);
-                        return beta;
-                    }
-
-                    alpha = score;
-                }
+                alpha = score;
+                List<Move> _mm = new List<Move>();
+                _mm.Add(m);
+                _mm.AddRange(line.argmove);
+                pline.argmove = _mm;
+                pline.cmove = line.cmove;
             }
-
-        }
-
-
-        if (oldalpha != alpha)
-        {
-            StoreHashEntry(kk, best_move, best_score, HashEntry.FLAG.EXACT, depth, maxdepth);
-        }
-        else
-        {
-            StoreHashEntry(kk, best_move, alpha, HashEntry.FLAG.ALPHA, depth, maxdepth);
         }
 
         return alpha;
@@ -265,19 +159,9 @@ public class MyBot : IChessBot
         return s;
     }
 
-    public void iterative_deepening(Board board, int maxdepth)
-    {
-        for(int i= 0; i < maxdepth;i++)
-        {
-            int score = AlphaBeta(board, -INF, INF, i, i);
-            Console.WriteLine(string.Format("Level {0} Score {1}", i, score));
-        }
-    }
-
     public Move Think(Board board, Timer timer)
     {
-
-
+        Console.WriteLine(string.Format("{0} {1}", board.PlyCount, timer.MillisecondsRemaining));
         foreach (var attacker in Mvv_Lva_Victim_scores.Keys)
         {
             Mvv_Lva_Scores[attacker] = new Dictionary<PieceType, int>();
@@ -287,20 +171,34 @@ public class MyBot : IChessBot
             }
         }
 
-        //int score = AlphaBeta(board, -INF, INF, 4, 4);
-        //Console.WriteLine("Score: {0}", score);
-        iterative_deepening(board, 5);
+        int maxdepth = 6;
+
+        if (timer.MillisecondsRemaining < 30 * 1000)
+            maxdepth = 5;
+        else if (timer.MillisecondsRemaining < 12 * 1000)
+            maxdepth = 4;
 
 
+        PVNode pVNode = new PVNode();
+        int score = AlphaBeta(board, -INF, INF, maxdepth, maxdepth, pVNode, true);
 
-        if(get_pv_line_(board).Count == 0)
+
+        /*
+        for(int i =0; i < maxdepth; i++)
         {
-            Random r = new Random();
-            Move[] legal = board.GetLegalMoves();
-            return legal[r.NextInt64(legal.Length)];
-        }
+            PVNode pVNode = new PVNode();
+            int score = AlphaBeta(board, -INF, INF, i, i, pVNode, true);
+            //Console.WriteLine("Level {0} Score: {1}", i, score);
+            if (pVNode.argmove.Count > 0 && pVNode.argmove[0] != Move.NullMove)
+            {
+                bestMoveSoFar = pVNode.argmove[0];
+            }
+        }*/
 
-        //return pVNode.argmove[0];
-        return get_pv_line_(board)[0];
+        if (pVNode.argmove.Count > 0 && pVNode.argmove[0] != Move.NullMove)
+            return pVNode.argmove[0];
+
+
+        return board.GetLegalMoves()[0];
     }
 }
