@@ -46,7 +46,7 @@ public class MyBot : IChessBot
             score += evalScores[p.PieceType] * (p.IsWhite ? 1 : -1);
         }
         
-        return score;
+        return score * (board.IsWhiteToMove ? 1 : -1);
     }
 
     public class PVNode
@@ -289,16 +289,16 @@ public class MyBot : IChessBot
 
         //int score = AlphaBeta(board, -INF, INF, 4, 4);
         //Console.WriteLine("Score: {0}", score);
-        iterative_deepening(board, 7);
+        iterative_deepening(board, 5);
 
 
 
-        /*if(pVNode.argmove.Count == 0)
+        if(get_pv_line_(board).Count == 0)
         {
             Random r = new Random();
             Move[] legal = board.GetLegalMoves();
             return legal[r.NextInt64(legal.Length)];
-        }*/
+        }
 
         //return pVNode.argmove[0];
         return get_pv_line_(board)[0];
