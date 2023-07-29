@@ -1,5 +1,6 @@
 ﻿using ChessChallenge.API;
 using System;
+using System.Diagnostics;
 
 namespace ChessChallenge.Example
 {
@@ -10,36 +11,76 @@ namespace ChessChallenge.Example
         // Piece values: null, pawn, knight, bishop, rook, queen, king
         int[] pieceValues = { 0, 100, 300, 300, 500, 900, 10000 };
 
-        public Move Think(Board board, Timer timer)
+        private void SendLine(string command)
+
         {
-            Move[] allMoves = board.GetLegalMoves();
+            Debug.WriteLine("[UCI SEND] " + command);
+            myProcess.StandardInput.WriteLine(command);
+            myProcess.StandardInput.Flush();
+        }
 
-            // Pick a random move to play if nothing better is found
-            Random rng = new();
-            Move moveToPlay = allMoves[rng.Next(allMoves.Length)];
-            int highestValueCapture = 0;
-
-            foreach (Move move in allMoves)
+        private void myProcess_OutputDataReceived(object sender, DataReceivedEventArgs e)
+        {
+            string text = e.Data;
+            Debug.WriteLine("[UCI] " + text);
+            if (text.StartsWith("bestmove"))
             {
-                // Always play checkmate in one
-                if (MoveIsCheckmate(board, move))
-                {
-                    moveToPlay = move;
-                    break;
-                }
-
-                // Find highest value capture
-                Piece capturedPiece = board.GetPiece(move.TargetSquare);
-                int capturedPieceValue = pieceValues[(int)capturedPiece.PieceType];
-
-                if (capturedPieceValue > highestValueCapture)
-                {
-                    moveToPlay = move;
-                    highestValueCapture = capturedPieceValue;
-                }
+                string[] splitText = text.Split(" ");
+                mybestmove = new Move(splitText[1], mythinkingboard);
             }
 
-            return moveToPlay;
+        }
+
+        public Process myProcess = null;
+        public Move mybestmove = Move.NullMove;
+        public Board mythinkingboard = null;
+
+        public Move Think(Board board, Timer timer)
+        {
+            mythinkingboard = board;
+            mybestmove = Move.NullMove;
+            ProcessStartInfo si = new ProcessStartInfo()
+            {
+                FileName = "chispa403-p4.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true
+            };
+
+            myProcess = new Process();
+            myProcess.StartInfo = si;
+            try
+            {
+                // throws an exception on win98
+                myProcess.PriorityClass = ProcessPriorityClass.BelowNormal;
+            }
+            catch { }
+
+            myProcess.OutputDataReceived += new DataReceivedEventHandler(myProcess_OutputDataReceived);
+
+            myProcess.Start();
+            myProcess.BeginErrorReadLine();
+            myProcess.BeginOutputReadLine();
+
+            SendLine("uci");
+
+            SendLine("isready");
+            System.Threading.Thread.Sleep(200);
+            SendLine("ucinewgame");
+            System.Threading.Thread.Sleep(200);
+            SendLine("position fen \"" + board.GetFenString() + "\"");
+            System.Threading.Thread.Sleep(200);
+            SendLine("go movetime 200");
+
+
+            while (mybestmove == Move.NullMove)
+            {
+                System.Threading.Thread.Sleep(100);
+            }
+
+            return mybestmove;
         }
 
         // Test if this move gives checkmate

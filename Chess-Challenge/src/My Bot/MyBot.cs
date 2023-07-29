@@ -1,7 +1,9 @@
 ﻿using ChessChallenge.API;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using static System.Net.Mime.MediaTypeNames;
 
 
 public class MyBot : IChessBot
@@ -159,6 +161,7 @@ public class MyBot : IChessBot
         return s;
     }
 
+    
     public Move Think(Board board, Timer timer)
     {
         Console.WriteLine(string.Format("{0} {1}", board.PlyCount, timer.MillisecondsRemaining));
@@ -173,7 +176,7 @@ public class MyBot : IChessBot
 
         int maxdepth = 6;
 
-        if (timer.MillisecondsRemaining < 30 * 1000)
+        if (timer.MillisecondsRemaining < 40 * 1000)
             maxdepth = 5;
         else if (timer.MillisecondsRemaining < 12 * 1000)
             maxdepth = 4;
