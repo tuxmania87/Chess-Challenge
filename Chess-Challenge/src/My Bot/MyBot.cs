@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using static MyBot;
 using static System.Net.Mime.MediaTypeNames;
 
 
@@ -11,50 +12,42 @@ public class MyBot : IChessBot
 {
     public MyBot() {
         
-        foreach (var attacker in Mvv_Lva_Victim_scores.Keys)
+        
+        for(int attacker = 1; attacker <=6; attacker++)
         {
-            Mvv_Lva_Scores[attacker] = new Dictionary<PieceType, int>();
-            foreach (var victim in Mvv_Lva_Victim_scores.Keys)
+            Mvv_Lva_Scores[attacker] = new Dictionary<int, int>();
+            for (int victim = 1; victim <= 6; victim++)
             {
-                Mvv_Lva_Scores[attacker][victim] = Convert.ToInt32((Mvv_Lva_Victim_scores[victim]) + 6 - (Mvv_Lva_Victim_scores[attacker] / 100)) + 1000000;
+                Mvv_Lva_Scores[attacker][victim] = victim*100 + 6 - (attacker) + 1000000;
             }
         }
 
         history = new int[64][];
+        
         for(int i=0; i<history.Length; i++)
         {
             history[i] = new int[64];
         }
 
+        killers = new Move[2][];
+
+        killers[0] = new Move[400];
+        killers[1] = new Move[400];
+
     }
 
-    public int[][] history = null;
+    public Move[][] killers;
+    public int[][] history;
     public int _alphaBetaNodes = 0;
     public int _qNodes = 0;
 
     static int INF = 12000000;
-    static Dictionary<PieceType, Dictionary<PieceType, int>> Mvv_Lva_Scores
-        = new Dictionary<PieceType, Dictionary<PieceType, int>>();
+    static Dictionary<int, Dictionary<int, int>> Mvv_Lva_Scores
+        = new Dictionary<int, Dictionary<int, int>>();
 
-    public Dictionary<PieceType, int> evalScores = new Dictionary<PieceType, int>()
-    {
-        { PieceType.Pawn, 100 },
-        { PieceType.Knight, 300 },
-        { PieceType.Bishop, 305},
-        { PieceType.Rook, 500} ,
-        { PieceType.King, 9000 },
-        { PieceType.Queen, 900 },
-        { PieceType.None, 0 }
-    };
+    public int[] evalScores = new int[] { 0, 100, 300, 305, 500, 900, 9000 };
 
-    public Dictionary<PieceType, int> Mvv_Lva_Victim_scores = new Dictionary<PieceType, int> {
-            { PieceType.Pawn , 100 },
-            { PieceType.Knight , 200 },
-            { PieceType.Bishop , 300 },
-            { PieceType.Rook , 400 },
-            { PieceType.Queen , 500 },
-            { PieceType.King , 600 }
-        };
+
 
     public int evaluatePosition(Board board)
     {
@@ -66,15 +59,15 @@ public class MyBot : IChessBot
             Square s = new Square(i);
             Piece p = board.GetPiece(s);
 
-            score += evalScores[p.PieceType] * (p.IsWhite ? 1 : -1);
+            score += evalScores[((int)p.PieceType)] * (p.IsWhite ? 1 : -1);
 
             if (p.PieceType == PieceType.Knight || p.PieceType == PieceType.Bishop)
             {
                 if ((p.IsWhite && s.Rank == 0) || (!p.IsWhite && s.Rank == 7))
                     score -= 20 * (p.IsWhite ? 1 : -1);
             }
-            else if (p.PieceType == PieceType.Rook && (s.File <= 1 || s.File >= 6))
-                score -= 20 * (p.IsWhite ? 1 : -1);
+            //else if (p.PieceType == PieceType.Rook && (s.File <= 1 || s.File >= 6))
+            //    score -= 20 * (p.IsWhite ? 1 : -1);
             else if (p.PieceType == PieceType.Pawn)
             {
                 if ((s.Rank == 1 || s.Rank==2) && p.IsWhite && s.File >= 2 && s.File <= 4)
@@ -95,6 +88,7 @@ public class MyBot : IChessBot
         public List<Move> argmove = new List<Move>();
     }
 
+    /*
     public int Quiesce(Board board, int alpha, int beta, int qdepth)
     {
         _qNodes++;
@@ -124,7 +118,7 @@ public class MyBot : IChessBot
 
             if (victim == PieceType.None)
                 victim = PieceType.Pawn;
-            scoredMoves[m] = Mvv_Lva_Scores[attacker][victim];
+            scoredMoves[m] = Mvv_Lva_Scores[((int)attacker)][((int)victim)];
 
         }
 
@@ -143,7 +137,7 @@ public class MyBot : IChessBot
                 alpha = score;
         }
         return alpha;
-    }
+    }*/
 
     public int AlphaBeta(Board board, int alpha, int beta, int depth, int maxdepth, PVNode pline, bool nullMove)
     {
@@ -200,11 +194,20 @@ public class MyBot : IChessBot
 
                 if (victim == PieceType.None)
                     victim = PieceType.Pawn;
-                scoredMoves[m] = Mvv_Lva_Scores[attacker][victim];
+                scoredMoves[m] = Mvv_Lva_Scores[((int)attacker)][((int)victim)];
             }
             else
             {
-                scoredMoves[m] = history[m.StartSquare.Index][m.TargetSquare.Index];
+                if (killers[0][board.PlyCount] == m)
+                {
+                    scoredMoves[m] = 900000;
+                }
+                else if (killers[1][board.PlyCount] == m)
+                {
+                    scoredMoves[m] = 800000;
+                }
+                else
+                    scoredMoves[m] = history[m.StartSquare.Index][m.TargetSquare.Index];
             }
         }
 
@@ -217,7 +220,15 @@ public class MyBot : IChessBot
             board.UndoMove(m);
 
             if (score >= beta)
+            {
+                if(m.IsCapture)
+                {
+                    killers[1][board.PlyCount] = killers[0][board.PlyCount];
+                    killers[0][board.PlyCount] = m;
+                }
                 return beta;
+            }
+
             if (score > alpha)
             {
                 alpha = score;
@@ -238,6 +249,20 @@ public class MyBot : IChessBot
 
         return alpha;
     }
+
+    public Move iterative_deepening(Board board,  int depth)
+    {
+        PVNode pVNode = new PVNode();
+        Move bestMoveSoFar = Move.NullMove;
+        for (int i = 1; i <= depth; i++)
+        {
+            int score = AlphaBeta(board, -INF, INF, i, i, pVNode, true);
+            bestMoveSoFar = pVNode.argmove.Count > 0 ? pVNode.argmove[0] : board.GetLegalMoves()[0];
+            Console.WriteLine(string.Format("ID {0} Score {1} Move {2}", i, score, bestMoveSoFar));
+        }
+
+        return bestMoveSoFar;
+    }
     
     public Move Think(Board board, Timer timer)
     {
@@ -245,16 +270,15 @@ public class MyBot : IChessBot
         _qNodes = 0;
         int maxdepth = 5;
 
-        if (timer.MillisecondsRemaining < 40 * 1000)
-            maxdepth = 5;
+        //if (timer.MillisecondsRemaining < 40 * 1000)
+        //    maxdepth = 5;
         if (timer.MillisecondsRemaining < 12 * 1000)
             maxdepth = 4;
 
 
-        PVNode pVNode = new PVNode();
-        int score = AlphaBeta(board, -INF, INF, maxdepth, maxdepth, pVNode, true);
-
-        Console.WriteLine(string.Format("Depth {0} Score {1} Nodes {2} QNodes {3}", maxdepth, score, _alphaBetaNodes, _qNodes));
+        //PVNode pVNode = new PVNode();
+        //int score = AlphaBeta(board, -INF, INF, maxdepth, maxdepth, pVNode, true);
+        //Console.WriteLine(string.Format("Depth {0} Score {1} Nodes {2} QNodes {3}", maxdepth, score, _alphaBetaNodes, _qNodes));
 
         /*
         for(int i =0; i < maxdepth; i++)
@@ -268,10 +292,10 @@ public class MyBot : IChessBot
             }
         }*/
 
-        if (pVNode.argmove.Count > 0 && pVNode.argmove[0] != Move.NullMove)
-            return pVNode.argmove[0];
+        //if (pVNode.argmove.Count > 0 && pVNode.argmove[0] != Move.NullMove)
+        //    return pVNode.argmove[0];
 
-
-        return board.GetLegalMoves()[0];
+        return iterative_deepening(board, maxdepth);
+        //return board.GetLegalMoves()[0];
     }
 }

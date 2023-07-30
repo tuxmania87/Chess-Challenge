@@ -1,6 +1,7 @@
 ﻿using ChessChallenge.API;
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace ChessChallenge.Example
@@ -38,6 +39,85 @@ namespace ChessChallenge.Example
         public Board mythinkingboard = null;
 
         public Move Think(Board board, Timer timer)
+        {
+            return Think_sf(board, timer);
+        }
+
+        public Move Think_sf(Board board, Timer timer)
+        {
+            int level = 1;
+            mythinkingboard = board;
+            mybestmove = Move.NullMove;
+            ProcessStartInfo si = new ProcessStartInfo()
+            {
+                FileName = "stockfish_15_x64_avx2.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true
+            };
+
+            myProcess = new Process();
+            myProcess.StartInfo = si;
+            try
+            {
+                // throws an exception on win98
+                myProcess.PriorityClass = ProcessPriorityClass.BelowNormal;
+            }
+            catch { }
+
+            myProcess.OutputDataReceived += new DataReceivedEventHandler(myProcess_OutputDataReceived);
+
+            myProcess.Start();
+            myProcess.BeginErrorReadLine();
+            myProcess.BeginOutputReadLine();
+
+            SendLine("uci");
+
+
+
+            SendLine("isready");
+            System.Threading.Thread.Sleep(200);
+
+            SendLine(string.Format("setoption name Skill Level value {0}", level));
+            System.Threading.Thread.Sleep(200);
+
+            SendLine("ucinewgame");
+            System.Threading.Thread.Sleep(200);
+            SendLine("position fen \"" + board.GetFenString() + "\"");
+            System.Threading.Thread.Sleep(200);
+            int moveTime = 1000;
+
+            if (timer.MillisecondsRemaining < 30 * 1000)
+                moveTime = 800;
+
+            if (timer.MillisecondsRemaining < 20 * 1000)
+                moveTime = 500;
+
+            if (timer.MillisecondsRemaining < 10 * 1000)
+                moveTime = 200;
+
+
+
+            SendLine(string.Format("go movetime {0}", moveTime));
+
+
+            while (mybestmove == Move.NullMove)
+            {
+                System.Threading.Thread.Sleep(100);
+            }
+
+            // check if legal
+            if(!board.GetLegalMoves().Contains(mybestmove))
+            {
+                return board.GetLegalMoves()[0];
+            }
+
+            return mybestmove;
+        }
+
+        public Move Think_oldengine(Board board, Timer timer)
         {
             mythinkingboard = board;
             mybestmove = Move.NullMove;
