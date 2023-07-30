@@ -46,7 +46,7 @@ public class MyBot : IChessBot
             score += evalScores[p.PieceType] * (p.IsWhite ? 1 : -1);
         }
         
-        return score;
+        return score * (board.IsWhiteToMove ? 1 : -1);
     }
 
     public class PVNode
@@ -176,10 +176,6 @@ public class MyBot : IChessBot
             }
         }
 
-
-
-        PVNode line = new PVNode();
-
         if(depth == 0)
         {
             return evaluatePosition(board);
@@ -194,10 +190,6 @@ public class MyBot : IChessBot
             if(board.IsInCheck())
             {
                 return -1 * (100000 + depth);
-            }
-            else
-            {
-                return 0;
             }
         }
         if(board.IsDraw())
@@ -253,18 +245,6 @@ public class MyBot : IChessBot
         return alpha;
     }
 
-    public string get_moves(Move[] moves)
-    {
-        string s = "";
-        int anchor = 0;
-
-        while (moves[anchor] != Move.NullMove)
-        {
-            s += moves[anchor++] + " ";
-        }
-        return s;
-    }
-
     public void iterative_deepening(Board board, int maxdepth)
     {
         for(int i= 0; i < maxdepth;i++)
@@ -289,7 +269,7 @@ public class MyBot : IChessBot
 
         //int score = AlphaBeta(board, -INF, INF, 4, 4);
         //Console.WriteLine("Score: {0}", score);
-        iterative_deepening(board, 7);
+        iterative_deepening(board, 4);
 
 
 
