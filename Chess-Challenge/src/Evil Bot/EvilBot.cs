@@ -1,6 +1,7 @@
 ﻿using ChessChallenge.API;
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace ChessChallenge.Example
 {
@@ -23,10 +24,11 @@ namespace ChessChallenge.Example
         {
             string text = e.Data;
             Debug.WriteLine("[UCI] " + text);
-            if (text.StartsWith("bestmove"))
+            if (text != null && text.StartsWith("bestmove"))
             {
                 string[] splitText = text.Split(" ");
                 mybestmove = new Move(splitText[1], mythinkingboard);
+                SendLine("quit");
             }
 
         }
@@ -72,7 +74,20 @@ namespace ChessChallenge.Example
             System.Threading.Thread.Sleep(200);
             SendLine("position fen \"" + board.GetFenString() + "\"");
             System.Threading.Thread.Sleep(200);
-            SendLine("go movetime 200");
+            int moveTime = 1000;
+
+            if (timer.MillisecondsRemaining < 30 * 1000)
+                moveTime = 800;
+
+            if (timer.MillisecondsRemaining < 20 * 1000)
+                moveTime = 500;
+
+            if (timer.MillisecondsRemaining < 10 * 1000)
+                moveTime = 200;
+
+
+
+            SendLine(string.Format("go movetime {0}", moveTime));
 
 
             while (mybestmove == Move.NullMove)

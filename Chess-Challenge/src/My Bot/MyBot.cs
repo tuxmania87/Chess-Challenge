@@ -9,6 +9,9 @@ using static System.Net.Mime.MediaTypeNames;
 public class MyBot : IChessBot
 {
 
+    public int _alphaBetaNodes = 0;
+    public int _qNodes = 0;
+
     static int INF = 12000000;
     static Dictionary<PieceType, Dictionary<PieceType, int>> Mvv_Lva_Scores
         = new Dictionary<PieceType, Dictionary<PieceType, int>>();
@@ -54,9 +57,9 @@ public class MyBot : IChessBot
                 score -= 20 * (p.IsWhite ? 1 : -1);
             else if (p.PieceType == PieceType.Pawn)
             {
-                if (s.Rank == 1 && p.IsWhite && s.File >= 2 && s.File <= 5)
+                if ((s.Rank == 1 || s.Rank==2) && p.IsWhite && s.File >= 2 && s.File <= 4)
                     score -= 20 * (p.IsWhite ? 1 : -1);
-                if (s.Rank == 6 && !p.IsWhite && s.File >= 2 && s.File <= 5)
+                if ((s.Rank == 5 || s.Rank == 6) && !p.IsWhite && s.File >= 2 && s.File <= 4)
                     score -= 20 * (p.IsWhite ? 1 : -1);
             }
 
@@ -72,16 +75,66 @@ public class MyBot : IChessBot
         public List<Move> argmove = new List<Move>();
     }
 
+    public int Quiesce(Board board, int alpha, int beta, int qdepth)
+    {
+        _qNodes++;
+
+        int ev = evaluatePosition(board);
+
+        if (qdepth >= 5)
+            return ev;
+
+        if (ev >= beta)
+        {
+            return beta;
+        }
+        if (alpha < ev)
+        {
+            alpha = ev;
+        }
+
+        Move[] allLegalMoves = board.GetLegalMoves(true);
+
+        Dictionary<Move, int> scoredMoves = new Dictionary<Move, int>();
+        foreach (Move m in allLegalMoves)
+        {
+
+            PieceType attacker = board.GetPiece(m.StartSquare).PieceType;
+            PieceType victim = board.GetPiece(m.TargetSquare).PieceType;
+
+            if (victim == PieceType.None)
+                victim = PieceType.Pawn;
+            scoredMoves[m] = Mvv_Lva_Scores[attacker][victim];
+
+        }
+
+        List<Move> scoredList = scoredMoves.OrderBy(x => x.Value).Select(y => y.Key).ToList();
+        scoredList.Reverse();
+
+        foreach (Move m in scoredList)
+        {
+            board.MakeMove(m);
+            int score = -1 * Quiesce(board, -beta, -alpha, qdepth + 1);
+            board.UndoMove(m);
+
+            if (score >= beta)
+                return beta;
+            if (score > alpha)
+                alpha = score;
+        }
+        return alpha;
+    }
+
     public int AlphaBeta(Board board, int alpha, int beta, int depth, int maxdepth, PVNode pline, bool nullMove)
     {
-
+        _alphaBetaNodes++;
         PVNode line = new PVNode();
 
         if (depth == 0)
         {
             pline.cmove = 0;
-            return evaluatePosition(board);
-            //return Quiesce(board, alpha, beta, board.PlyCount);
+            //return evaluatePosition(board);
+            return Quiesce(board, alpha, beta, 0);
         }
 
         Move[] allLegalMoves = board.GetLegalMoves();
@@ -107,26 +160,7 @@ public class MyBot : IChessBot
             depth++;
         }
 
-        Dictionary<Move, int> scoredMoves = new Dictionary<Move, int>();
         foreach (Move m in allLegalMoves)
-        {
-            if (m.IsCapture)
-            {
-                PieceType attacker = board.GetPiece(m.StartSquare).PieceType;
-                PieceType victim = board.GetPiece(m.TargetSquare).PieceType;
-
-                if (victim == PieceType.None)
-                    victim = PieceType.Pawn;
-                scoredMoves[m] = Mvv_Lva_Scores[attacker][victim];
-            }
-            else
-                scoredMoves[m] = 2;
-        }
-
-        List<Move> scoredList = scoredMoves.OrderBy(x => x.Value).Select(y => y.Key).ToList();
-        scoredList.Reverse();
-
-        foreach (Move m in scoredList)
         {
             board.MakeMove(m);
             //string tempfen = board.GetFenString();
@@ -148,23 +182,12 @@ public class MyBot : IChessBot
 
         return alpha;
     }
-
-    public string get_moves(Move[] moves)
-    {
-        string s = "";
-        int anchor = 0;
-
-        while (moves[anchor] != Move.NullMove)
-        {
-            s += moves[anchor++] + " ";
-        }
-        return s;
-    }
-
     
     public Move Think(Board board, Timer timer)
     {
-        Console.WriteLine(string.Format("{0} {1}", board.PlyCount, timer.MillisecondsRemaining));
+
+        _alphaBetaNodes = 0;
+        _qNodes = 0;
         foreach (var attacker in Mvv_Lva_Victim_scores.Keys)
         {
             Mvv_Lva_Scores[attacker] = new Dictionary<PieceType, int>();
@@ -174,7 +197,7 @@ public class MyBot : IChessBot
             }
         }
 
-        int maxdepth = 6;
+        int maxdepth = 5;
 
         if (timer.MillisecondsRemaining < 40 * 1000)
             maxdepth = 5;
@@ -185,6 +208,7 @@ public class MyBot : IChessBot
         PVNode pVNode = new PVNode();
         int score = AlphaBeta(board, -INF, INF, maxdepth, maxdepth, pVNode, true);
 
+        Console.WriteLine(string.Format("Depth {0} Score {1} Nodes {2} QNodes {3}", maxdepth, score, _alphaBetaNodes, _qNodes));
 
         /*
         for(int i =0; i < maxdepth; i++)
