@@ -1,4 +1,5 @@
 ﻿using ChessChallenge.API;
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,7 +9,26 @@ using static System.Net.Mime.MediaTypeNames;
 
 public class MyBot : IChessBot
 {
+    public MyBot() {
+        
+        foreach (var attacker in Mvv_Lva_Victim_scores.Keys)
+        {
+            Mvv_Lva_Scores[attacker] = new Dictionary<PieceType, int>();
+            foreach (var victim in Mvv_Lva_Victim_scores.Keys)
+            {
+                Mvv_Lva_Scores[attacker][victim] = Convert.ToInt32((Mvv_Lva_Victim_scores[victim]) + 6 - (Mvv_Lva_Victim_scores[attacker] / 100)) + 1000000;
+            }
+        }
 
+        history = new int[64][];
+        for(int i=0; i<history.Length; i++)
+        {
+            history[i] = new int[64];
+        }
+
+    }
+
+    public int[][] history = null;
     public int _alphaBetaNodes = 0;
     public int _qNodes = 0;
 
@@ -81,7 +101,7 @@ public class MyBot : IChessBot
 
         int ev = evaluatePosition(board);
 
-        if (qdepth >= 5)
+        if (qdepth >= 3)
             return ev;
 
         if (ev >= beta)
@@ -133,8 +153,8 @@ public class MyBot : IChessBot
         if (depth == 0)
         {
             pline.cmove = 0;
-            //return evaluatePosition(board);
-            return Quiesce(board, alpha, beta, 0);
+            return evaluatePosition(board);
+            //return Quiesce(board, alpha, beta, 0);
         }
 
         Move[] allLegalMoves = board.GetLegalMoves();
@@ -160,6 +180,35 @@ public class MyBot : IChessBot
             depth++;
         }
 
+
+        // sorting
+
+        Dictionary<Move, int> scoredMoves = new Dictionary<Move, int>();
+
+        foreach (Move m in allLegalMoves)
+        {
+            if(pline.argmove.Contains(m))
+            {
+                scoredMoves[m] = 10000000;
+                continue;
+            }
+
+            if(m.IsCapture)
+            {
+                PieceType attacker = board.GetPiece(m.StartSquare).PieceType;
+                PieceType victim = board.GetPiece(m.TargetSquare).PieceType;
+
+                if (victim == PieceType.None)
+                    victim = PieceType.Pawn;
+                scoredMoves[m] = Mvv_Lva_Scores[attacker][victim];
+            }
+            else
+            {
+                scoredMoves[m] = history[m.StartSquare.Index][m.TargetSquare.Index];
+            }
+        }
+
+
         foreach (Move m in allLegalMoves)
         {
             board.MakeMove(m);
@@ -177,6 +226,13 @@ public class MyBot : IChessBot
                 _mm.AddRange(line.argmove);
                 pline.argmove = _mm;
                 pline.cmove = line.cmove;
+
+
+                if (!m.IsCapture)
+                {
+                    history[m.StartSquare.Index][m.TargetSquare.Index] += depth;
+                }
+
             }
         }
 
@@ -185,23 +241,13 @@ public class MyBot : IChessBot
     
     public Move Think(Board board, Timer timer)
     {
-
         _alphaBetaNodes = 0;
         _qNodes = 0;
-        foreach (var attacker in Mvv_Lva_Victim_scores.Keys)
-        {
-            Mvv_Lva_Scores[attacker] = new Dictionary<PieceType, int>();
-            foreach (var victim in Mvv_Lva_Victim_scores.Keys)
-            {
-                Mvv_Lva_Scores[attacker][victim] = Convert.ToInt32((Mvv_Lva_Victim_scores[victim]) + 6 - (Mvv_Lva_Victim_scores[attacker] / 100)) + 1000000;
-            }
-        }
-
         int maxdepth = 5;
 
         if (timer.MillisecondsRemaining < 40 * 1000)
             maxdepth = 5;
-        else if (timer.MillisecondsRemaining < 12 * 1000)
+        if (timer.MillisecondsRemaining < 12 * 1000)
             maxdepth = 4;
 
 
