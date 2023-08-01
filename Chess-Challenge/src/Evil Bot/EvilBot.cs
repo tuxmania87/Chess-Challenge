@@ -1,5 +1,6 @@
 ﻿using ChessChallenge.API;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -40,12 +41,12 @@ namespace ChessChallenge.Example
 
         public Move Think(Board board, Timer timer)
         {
-            return Think_sf(board, timer);
+            return Think_Ferdi(board, timer);
         }
 
         public Move Think_sf(Board board, Timer timer)
         {
-            int level = 1;
+            int level = 3;
             mythinkingboard = board;
             mybestmove = Move.NullMove;
             ProcessStartInfo si = new ProcessStartInfo()
@@ -78,15 +79,15 @@ namespace ChessChallenge.Example
 
 
             SendLine("isready");
-            System.Threading.Thread.Sleep(200);
+            System.Threading.Thread.Sleep(2);
 
             SendLine(string.Format("setoption name Skill Level value {0}", level));
-            System.Threading.Thread.Sleep(200);
+            System.Threading.Thread.Sleep(2);
 
             SendLine("ucinewgame");
-            System.Threading.Thread.Sleep(200);
+            System.Threading.Thread.Sleep(2);
             SendLine("position fen \"" + board.GetFenString() + "\"");
-            System.Threading.Thread.Sleep(200);
+            System.Threading.Thread.Sleep(2);
             int moveTime = 1000;
 
             if (timer.MillisecondsRemaining < 30 * 1000)
@@ -186,5 +187,191 @@ namespace ChessChallenge.Example
             board.UndoMove(move);
             return isMate;
         }
+
+
+        //FERDI
+
+        float move_punisher = 1000f;
+        float matt_value = -1000000f;
+
+
+        private Move_Value_Pear select_random_move(List<Move_Value_Pear> list)
+        {
+            Random random = new Random();
+            int randInt = random.Next(0, list.Count);
+            return list[randInt];
+        }
+
+        public class Move_Value_Pear
+        {
+            public Move move { get; set; }
+            public float value { get; set; }
+
+        }
+        private float evaluate_board(Board board)
+        {
+            if (board.IsDraw())
+            {
+                // coping on blunders from enemy
+                return -0.1f;
+
+            }
+            else if (board.GetLegalMoves().Length == 0)
+            {
+                return matt_value;
+            }
+            else
+            {
+                float[] values = { 1, 3, 3.5f, 5, 9, 0 };
+                PieceList[] pl = board.GetAllPieceLists();
+                float white_score = 0.0f;
+                float black_score = 0.0f;
+                for (int i = 0; i < pl.Length / 2; i++)
+                {
+                    white_score += pl[i].Count * values[i];
+                    black_score += pl[i + 6].Count * values[i];
+                }
+                white_score = (board.HasKingsideCastleRight(true) || board.HasQueensideCastleRight(true)) ? white_score + 1 : white_score;
+                black_score = (board.HasKingsideCastleRight(false) || board.HasQueensideCastleRight(false)) ? black_score + 1 : black_score;
+                return board.IsWhiteToMove ? white_score - black_score : -(white_score - black_score);
+            }
+        }
+
+
+
+        private Move_Value_Pear alphabeta(Board board, int depth, float alpha, float beta, Boolean is_max_player, int depth_extender)
+        {
+
+            if (depth + depth_extender == 0 || board.GetLegalMoves().Length == 0)
+            {
+                Move_Value_Pear return_value = new Move_Value_Pear();
+                float eval = evaluate_board(board);
+                return_value.value = is_max_player ? eval : -eval;
+                return return_value;
+            }
+            if (is_max_player)
+            {
+                List<Move_Value_Pear> movelist = new List<Move_Value_Pear>();
+                float value = -(float.MaxValue);
+                for (int i = 0; i < board.GetLegalMoves().Length; i++)
+                {
+                    Move temp_move = board.GetLegalMoves()[i];
+                    board.MakeMove(temp_move);
+                    Move_Value_Pear comp_move_and_value = alphabeta(board, depth - 1, alpha, beta, false, depth_extender);
+
+                    if (comp_move_and_value.value > 20000f)
+                    {
+                        comp_move_and_value.value -= move_punisher;
+                    }
+                    comp_move_and_value.move = temp_move;
+
+                    if (comp_move_and_value.value > value)
+                    {
+                        value = comp_move_and_value.value;
+                        movelist = new List<Move_Value_Pear>() { comp_move_and_value };
+                    }
+                    else if (comp_move_and_value.value == value)
+                    {
+                        movelist.Add(comp_move_and_value);
+                    }
+
+                    board.UndoMove(temp_move);
+                    if (value > beta)
+                    {
+                        break;
+                    }
+                    alpha = Math.Max(alpha, value);
+                }
+                return select_random_move(movelist);
+            }
+            else
+            {
+                depth_extender = depth_extender < 1 && board.IsInCheck() ? depth_extender + 1 : depth_extender;
+                List<Move_Value_Pear> movelist = new List<Move_Value_Pear>();
+                float value = float.MaxValue;
+                for (int i = 0; i < board.GetLegalMoves().Length; i++)
+                {
+                    Move temp_move = board.GetLegalMoves()[i];
+                    board.MakeMove(temp_move);
+                    Move_Value_Pear comp_move_and_value = alphabeta(board, depth - 1, alpha, beta, true, depth_extender);
+
+                    if (comp_move_and_value.value < -20000f)
+                    {
+                        comp_move_and_value.value += move_punisher;
+                    }
+
+                    comp_move_and_value.move = temp_move;
+
+                    if (comp_move_and_value.value < value)
+                    {
+                        value = comp_move_and_value.value;
+                        movelist = new List<Move_Value_Pear>() { comp_move_and_value };
+                    }
+                    else if (comp_move_and_value.value == value)
+                    {
+                        movelist.Add(comp_move_and_value);
+                    }
+
+                    board.UndoMove(temp_move);
+                    if (value < alpha)
+                    {
+                        break;
+                    }
+                    beta = Math.Min(beta, value);
+                }
+                return select_random_move(movelist);
+            }
+
+        }
+
+        public Move Think_Ferdi(Board board, Timer timer)
+        {
+            Move[] moves = board.GetLegalMoves();
+            if (moves.Length == 1)
+            {
+                return moves[0];
+            }
+
+            int factor = 0;
+
+            PieceList[] pl = board.GetAllPieceLists();
+            float white_amount = 0;
+            float black_amount = 0;
+
+            for (int i = 0; i < pl.Length / 2; i++)
+            {
+                white_amount += pl[i].Count;
+                black_amount += pl[i + 6].Count;
+            }
+
+            factor = white_amount < 2 ? factor + 1 : factor;
+            factor = white_amount < 1 ? factor + 1 : factor;
+            factor = black_amount < 2 ? factor + 1 : factor;
+            factor = black_amount < 1 ? factor + 1 : factor;
+
+            factor = timer.MillisecondsRemaining < 10000 ? factor / 2 : factor;
+
+
+            Move_Value_Pear best = alphabeta(board, 4 + factor, -(float.MaxValue), float.MaxValue, true, 0);
+
+            Console.WriteLine("depth: " + (4 + factor));
+
+            if (best.value > 200000f)
+            {
+                Console.WriteLine("eval: #" + (-((matt_value + best.value) / move_punisher)));
+            }
+            else if (best.value < -200000f)
+            {
+                Console.WriteLine("eval: #" + (-((matt_value - best.value) / move_punisher)));
+            }
+            else
+            {
+                Console.WriteLine("eval: " + best.value);
+            }
+            Console.WriteLine(best.move);
+
+            return best.move;
+        }
+
     }
 }

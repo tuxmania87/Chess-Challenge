@@ -116,7 +116,8 @@ public class MyBot : IChessBot
 
                 if (victim == PieceType.None)
                     victim = PieceType.Pawn;
-                scoredMoves[m] = Mvv_Lva_Scores[attacker][victim];
+                //Mvv_Lva_Scores_check[i*100][j*100] = j * 100  + 6 - i + 1000000;
+                scoredMoves[m] = ((int)victim) * 100 + 6 - ((int)attacker) + 1000000;
             }
             else
                 scoredMoves[m] = 2;
@@ -151,14 +152,6 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         Console.WriteLine(string.Format("{0} {1}", board.PlyCount, timer.MillisecondsRemaining));
-        foreach (var attacker in Mvv_Lva_Victim_scores.Keys)
-        {
-            Mvv_Lva_Scores[attacker] = new Dictionary<PieceType, int>();
-            foreach (var victim in Mvv_Lva_Victim_scores.Keys)
-            {
-                Mvv_Lva_Scores[attacker][victim] = Convert.ToInt32((Mvv_Lva_Victim_scores[victim]) + 6 - (Mvv_Lva_Victim_scores[attacker] / 100)) + 1000000;
-            }
-        }
 
         int maxdepth = 5;
 
