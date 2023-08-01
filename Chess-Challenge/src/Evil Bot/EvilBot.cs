@@ -41,7 +41,7 @@ namespace ChessChallenge.Example
 
         public Move Think(Board board, Timer timer)
         {
-            return Think_Ferdi(board, timer);
+            return Think_sf(board, timer);
         }
 
         public Move Think_sf(Board board, Timer timer)

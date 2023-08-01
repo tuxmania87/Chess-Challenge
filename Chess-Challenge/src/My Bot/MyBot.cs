@@ -182,9 +182,12 @@ public class MyBot : IChessBot
         }*/
 
         if (pVNode.argmove.Count > 0 && pVNode.argmove[0] != Move.NullMove)
+        {
+            Console.WriteLine(string.Format("Eval {0} {1}", score, pVNode.argmove[0]));
             return pVNode.argmove[0];
+        }
 
-
+        Console.WriteLine(string.Format("Eval {0} First Random  Move", score));
         return board.GetLegalMoves()[0];
     }
 }
